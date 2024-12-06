@@ -21,6 +21,7 @@ from transformers import AutoModelForSequenceClassification
 from transformers import AutoModel, AutoTokenizer
 import transformers
 
+PWD = os.path.dirname(__file__)
 
 
 class IndicBERT_Data(Dataset):
@@ -61,15 +62,16 @@ class IndicLID():
 
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-        self.IndicLID_FTN_path = 'models/indiclid-ftn/model_baseline_roman.bin'
-        self.IndicLID_FTR_path = 'models/indiclid-ftr/model_baseline_roman.bin'
-        self.IndicLID_BERT_path = 'models/indiclid-bert/basline_nn_simple.pt'
+        self.IndicLID_FTN_path = os.path.join(PWD, 'models/indiclid-ftn/model_baseline_roman.bin')
+        self.IndicLID_FTR_path = os.path.join(PWD, 'models/indiclid-ftr/model_baseline_roman.bin')
+        self.IndicLID_BERT_path = os.path.join(PWD, 'models/indiclid-bert/basline_nn_simple.pt')
 
         self.IndicLID_FTN = fasttext.load_model(self.IndicLID_FTN_path)
         self.IndicLID_FTR = fasttext.load_model(self.IndicLID_FTR_path)
-        self.IndicLID_BERT = torch.load(self.IndicLID_BERT_path, map_location = self.device)
-        self.IndicLID_BERT.eval()
-        self.IndicLID_BERT_tokenizer = AutoTokenizer.from_pretrained("ai4bharat/IndicBERTv2-MLM-only")
+        if roman_lid_threshold > 0:
+            self.IndicLID_BERT = torch.load(self.IndicLID_BERT_path, map_location = self.device)
+            self.IndicLID_BERT.eval()
+            self.IndicLID_BERT_tokenizer = AutoTokenizer.from_pretrained("ai4bharat/IndicBERTv2-MLM-only")
         
         self.input_threshold = input_threshold
         self.model_threshold = roman_lid_threshold
@@ -243,6 +245,9 @@ class IndicLID():
             else:
                 IndicLID_BERT_inputs.append(input)
         
+        if not IndicLID_BERT_inputs:
+            return output_dict
+
         # 2nd stage
         output_dict = self.IndicBERT_roman_inference(IndicLID_BERT_inputs, output_dict, batch_size)
         return output_dict
@@ -308,7 +313,7 @@ class IndicLID():
         input_list = [input,]
         self.batch_predict(input_list, 1)
 
-    def batch_predict(self, input_list, batch_size):
+    def batch_predict(self, input_list, batch_size=32):
 
         # call functions seq by seq and divert the input to IndicBERT if 
         # fasttext prediction score is less than the defined model_threhsold.
