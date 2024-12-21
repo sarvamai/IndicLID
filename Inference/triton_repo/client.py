@@ -2,23 +2,13 @@ import tritonclient.http as http_client
 from tritonclient.utils import *
 import numpy as np
 
-ENABLE_SSL = False
 ENDPOINT_URL = 'localhost:8000'
-HTTP_HEADERS = {"Authorization": "Bearer __PASTE_KEY_HERE__"}
 
-# Connect to the server
-if ENABLE_SSL:
-    import gevent.ssl
-    triton_http_client = http_client.InferenceServerClient(
-        url=ENDPOINT_URL, verbose=False,
-        ssl=True, ssl_context_factory=gevent.ssl._create_default_https_context,
-    )
-else:
-    triton_http_client = http_client.InferenceServerClient(
-        url=ENDPOINT_URL, verbose=False,
-    )
+triton_http_client = http_client.InferenceServerClient(
+    url=ENDPOINT_URL, verbose=False,
+)
 
-print("Is server ready - {}".format(triton_http_client.is_server_ready(headers=HTTP_HEADERS)))
+print("Is server ready - {}".format(triton_http_client.is_server_ready()))
 
 def get_string_tensor(string_values, tensor_name):
     string_obj = np.array(string_values, dtype="object")
@@ -43,7 +33,6 @@ response = triton_http_client.infer(
     model_version='1',
     inputs=inputs,
     outputs=[output0, output1],
-    headers=HTTP_HEADERS,
 )#.get_response()
 
 # Decode the response

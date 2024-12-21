@@ -1,25 +1,15 @@
 # import packages
 
 import os
-import sys
 import re
 from tqdm import tqdm
 import pandas as pd
-import numpy as np
-import csv
-import random
 
 import fasttext
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import Dataset
-from torch.utils.data import DataLoader
-import torch.optim as optim
-from transformers import AutoModelForSequenceClassification
-from transformers import AutoModel, AutoTokenizer
-import transformers
+from transformers import AutoTokenizer
 
 PWD = os.path.dirname(__file__)
 
@@ -65,14 +55,23 @@ class IndicLID():
         self.IndicLID_FTN_path = os.path.join(PWD, 'models/indiclid-ftn/model_baseline_roman.bin')
         self.IndicLID_FTR_path = os.path.join(PWD, 'models/indiclid-ftr/model_baseline_roman.bin')
         self.IndicLID_BERT_path = os.path.join(PWD, 'models/indiclid-bert/basline_nn_simple.pt')
+        self.original_FT_path = os.path.join(PWD, 'models/original-ft-176/lid.176.bin')
 
+        print("Loading Indic-LID FT models")
         self.IndicLID_FTN = fasttext.load_model(self.IndicLID_FTN_path)
         self.IndicLID_FTR = fasttext.load_model(self.IndicLID_FTR_path)
         if roman_lid_threshold > 0:
-            self.IndicLID_BERT = torch.load(self.IndicLID_BERT_path, map_location = self.device)
+            print("Loading Indic-LID BERT model")
+            self.IndicLID_BERT = torch.load(self.IndicLID_BERT_path, weights_only=False, map_location = self.device)
             self.IndicLID_BERT.eval()
             self.IndicLID_BERT_tokenizer = AutoTokenizer.from_pretrained("ai4bharat/IndicBERTv2-MLM-only")
         
+        if os.path.isfile(self.original_FT_path):
+            print("Loading Original FastText model")
+            self.original_FT = fasttext.load_model(self.original_FT_path)
+        else:
+            self.original_FT = None
+
         self.input_threshold = input_threshold
         self.model_threshold = roman_lid_threshold
         self.classes = 47     
@@ -121,7 +120,7 @@ class IndicLID():
             'san_Deva' : 40,
             'sat_Olch' : 41,
             'snd_Arab' : 42,
-            'tam_Tamil' : 43,
+            'tam_Taml' : 43,
             'tel_Telu' : 44,
             'urd_Arab' : 45
         }
@@ -172,7 +171,7 @@ class IndicLID():
             40 : 'san_Deva',
             41 : 'sat_Olch',
             42 : 'snd_Arab',
-            43 : 'tam_Tamil',
+            43 : 'tam_Taml',
             44 : 'tel_Telu',
             45 : 'urd_Arab'
         }
@@ -218,12 +217,13 @@ class IndicLID():
         
         # inference for fasttext native script model
         input_texts = [line[1] for line in input_list]
-        IndicLID_FTN_predictions = self.IndicLID_FTN.predict(input_texts)
+        IndicLID_FTN_predictions = self.IndicLID_FTN.predict(input_texts, k=5)
         
         # add result of input directly to output_dict
         for input, pred_label, pred_score in zip(input_list, IndicLID_FTN_predictions[0], IndicLID_FTN_predictions[1]):
+            # print(pred_label)
             # print(pred_score)
-            output_dict[input[0]] = (input[1], pred_label[0][9:], pred_score[0], 'IndicLID-FTN')
+            output_dict[input[0]] = (input[1], pred_label[0][9:].replace("Tamil", "Taml"), pred_score[0], 'IndicLID-FTN')
 
         return output_dict
 
@@ -235,15 +235,26 @@ class IndicLID():
         # 1st stage
         # inference for fasttext roman script model
         input_texts = [line[1] for line in input_list]
+
+        # Indic roman LID is pretty in identifying English
+        # So if the original FT model is available, we can use it to identify English
+        if self.original_FT:
+            original_FT_predictions = self.original_FT.predict(input_texts, k=5)
+        else:
+            original_FT_predictions = [''] * len(input_texts)
+
         IndicLID_FTR_predictions = self.IndicLID_FTR.predict(input_texts)
         
         IndicLID_BERT_inputs = []
         # add result of input directly to output_dict
-        for input, pred_label, pred_score in zip(input_list, IndicLID_FTR_predictions[0], IndicLID_FTR_predictions[1]):
-            if pred_score[0] > self.model_threshold:
-                output_dict[input[0]] = (input[1], pred_label[0][9:], pred_score[0], 'IndicLID-FTR')
+        for input, orig_pred_label, orig_pred_score, roman_pred_label, roman_pred_score in zip(input_list, original_FT_predictions[0], original_FT_predictions[1], IndicLID_FTR_predictions[0], IndicLID_FTR_predictions[1]):
+            if orig_pred_label[0][9:] == 'en' and orig_pred_score[0] > 0.7:
+                output_dict[input[0]] = (input[1], "eng_Latn", orig_pred_score[0], 'LID-FT-Original')
             else:
-                IndicLID_BERT_inputs.append(input)
+                if roman_pred_score[0] > self.model_threshold:
+                    output_dict[input[0]] = (input[1], roman_pred_label[0][9:], roman_pred_score[0], 'IndicLID-FTR')
+                else:
+                    IndicLID_BERT_inputs.append(input)
         
         if not IndicLID_BERT_inputs:
             return output_dict

@@ -38,6 +38,33 @@ ISO_v2_to_v1 = {
     "urd": "ur",
 }
 
+SARVAM_ISO_v2_to_v1 = {
+    # Convert other languages to nearest language that Sarvam supports
+    "asm": "bn",
+    "ben": "bn",
+    "brx": "hi",
+    "doi": "hi",
+    "eng": "en",
+    "guj": "gu",
+    "hin": "hi",
+    "kan": "kn",
+    "kas": "hi",
+    "kok": "mr",
+    "mai": "hi",
+    "mal": "ml",
+    "mni": "bn",
+    "mar": "mr",
+    "nep": "hi",
+    "ori": "or",
+    "pan": "pa",
+    "san": "hi",
+    "sat": "hi",
+    "snd": "hi",
+    "tam": "ta",
+    "tel": "te",
+    "urd": "hi",
+}
+
 class TritonPythonModel:
     def initialize(self, args):
         self.model_config = json.loads(args['model_config'])
@@ -77,7 +104,7 @@ class TritonPythonModel:
         for (request_id, input_id), (input_text, response_code, confidence, model_name) in zip(batches["text_id_to_req_id_input_id"], lang_script_predictions):
             if "_" in response_code:
                 lang, script_code = response_code.split("_")
-                lang_code = ISO_v2_to_v1[lang] + '-IN'
+                lang_code = SARVAM_ISO_v2_to_v1[lang] + '-IN'
             else:
                 lang_code = response_code
                 script_code = ''
